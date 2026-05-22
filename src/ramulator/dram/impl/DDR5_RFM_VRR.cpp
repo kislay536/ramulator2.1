@@ -6,6 +6,9 @@
  *
  * Regenerate:   python -m ramulator codegen DDR5_RFM_VRR
  ******************************************************************************/
+#include "ramulator/dram/dram_spec.h"
+
+#include "ramulator/dram/commands/populate.h"
 #include "ramulator/dram/commands/ACT.h"
 #include "ramulator/dram/commands/PREab.h"
 #include "ramulator/dram/commands/PREpb.h"
@@ -17,8 +20,6 @@
 #include "ramulator/dram/commands/VRR.h"
 #include "ramulator/dram/commands/WR.h"
 #include "ramulator/dram/commands/WRA.h"
-#include "ramulator/dram/commands/populate.h"
-#include "ramulator/dram/dram_spec.h"
 
 namespace Ramulator {
 
@@ -35,41 +36,16 @@ class DDR5_RFM_VRR : public DRAMSpec {
   };
   struct Timing {
     enum : int {
-      rate,
-      nBL,
-      nCL,
-      nRCD,
-      nRP,
-      nRAS,
-      nRC,
-      nWR,
-      nRTP,
-      nCWL,
-      nPPD,
-      nCCDS,
-      nCCDL,
-      nCCDS_WR,
-      nCCDL_WR,
-      nRRDS,
-      nRRDL,
-      nWTRS,
-      nWTRL,
-      nFAW,
-      nRFC,
-      nREFI,
-      nCS,
-      tCK_ps,
-      nRFM,
-      nRFMpb,
-      nVRR,
-      COUNT
+    rate, nBL, nCL, nRCD, nRP, nRAS, nRC, nWR, nRTP, nCWL, nPPD, nCCDS, nCCDL, nCCDS_WR, nCCDL_WR, nRRDS, nRRDL,
+    nWTRS, nWTRL, nFAW, nRFC, nREFI, nCS, tCK_ps, nRFM, nRFMpb, nVRR, COUNT
     };
   };
 
-  using CommandImpls =
-      std::tuple<Cmd::ACT<DDR5_RFM_VRR>, Cmd::PREpb<DDR5_RFM_VRR>, Cmd::PREab<DDR5_RFM_VRR>, Cmd::RD<DDR5_RFM_VRR>,
-                 Cmd::WR<DDR5_RFM_VRR>, Cmd::RDA<DDR5_RFM_VRR>, Cmd::WRA<DDR5_RFM_VRR>, Cmd::REFab<DDR5_RFM_VRR>,
-                 Cmd::RFMab<DDR5_RFM_VRR>, Cmd::RFMpb<DDR5_RFM_VRR>, Cmd::VRR<DDR5_RFM_VRR> >;
+  using CommandImpls = std::tuple<
+      Cmd::ACT<DDR5_RFM_VRR>, Cmd::PREpb<DDR5_RFM_VRR>, Cmd::PREab<DDR5_RFM_VRR>, Cmd::RD<DDR5_RFM_VRR>,
+      Cmd::WR<DDR5_RFM_VRR>, Cmd::RDA<DDR5_RFM_VRR>, Cmd::WRA<DDR5_RFM_VRR>, Cmd::REFab<DDR5_RFM_VRR>,
+      Cmd::RFMab<DDR5_RFM_VRR>, Cmd::RFMpb<DDR5_RFM_VRR>, Cmd::VRR<DDR5_RFM_VRR>
+  >;
 
   DDR5_RFM_VRR(const ConfigNode& config) {
     // Counts
@@ -80,27 +56,27 @@ class DDR5_RFM_VRR : public DRAMSpec {
 
     // String name maps + reverse lookup vectors
     set_names(levels, level_names, {"Channel", "Rank", "BankGroup", "Bank", "Row", "Column"});
-    set_names(commands, command_names,
-              {"ACT", "PREpb", "PREab", "RD", "WR", "RDA", "WRA", "REFab", "RFMab", "RFMpb", "VRR"});
+    set_names(commands, command_names, {"ACT", "PREpb", "PREab", "RD", "WR", "RDA", "WRA", "REFab", "RFMab", "RFMpb", "VRR"});
     set_names(states, state_names, {"Opened", "Closed", "N_A"});
-    set_names(timings, timing_names,
-              {"rate",  "nBL",  "nCL",   "nRCD",  "nRP",      "nRAS",     "nRC",   "nWR",    "nRTP",
-               "nCWL",  "nPPD", "nCCDS", "nCCDL", "nCCDS_WR", "nCCDL_WR", "nRRDS", "nRRDL",  "nWTRS",
-               "nWTRL", "nFAW", "nRFC",  "nREFI", "nCS",      "tCK_ps",   "nRFM",  "nRFMpb", "nVRR"});
+    set_names(timings, timing_names, {
+        "rate", "nBL", "nCL", "nRCD", "nRP", "nRAS", "nRC", "nWR", "nRTP", "nCWL", "nPPD", "nCCDS", "nCCDL",
+        "nCCDS_WR", "nCCDL_WR", "nRRDS", "nRRDL", "nWTRS", "nWTRL", "nFAW", "nRFC", "nREFI", "nCS", "tCK_ps", "nRFM",
+        "nRFMpb", "nVRR"
+    });
 
     // Static spec data
     internal_prefetch_size = 16;
     init_states = {
-        State::N_A,     // Channel
-        State::N_A,     // Rank
-        State::N_A,     // BankGroup
-        State::Closed,  // Bank
-        State::Closed,  // Row
-        State::N_A,     // Column
+        State::N_A,           // Channel
+        State::N_A,           // Rank
+        State::N_A,           // BankGroup
+        State::Closed,        // Bank
+        State::Closed,        // Row
+        State::N_A,           // Column
     };
     supported_requests = {
-        Command::RD,  // Read -> RD
-        Command::WR,  // Write -> WR
+        Command::RD,        // Read -> RD
+        Command::WR,        // Write -> WR
     };
 
     // Runtime config (organization, timing values, timing constraints)

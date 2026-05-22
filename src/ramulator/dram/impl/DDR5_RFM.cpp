@@ -6,6 +6,9 @@
  *
  * Regenerate:   python -m ramulator codegen DDR5_RFM
  ******************************************************************************/
+#include "ramulator/dram/dram_spec.h"
+
+#include "ramulator/dram/commands/populate.h"
 #include "ramulator/dram/commands/ACT.h"
 #include "ramulator/dram/commands/PREab.h"
 #include "ramulator/dram/commands/PREpb.h"
@@ -16,8 +19,6 @@
 #include "ramulator/dram/commands/RFMpb.h"
 #include "ramulator/dram/commands/WR.h"
 #include "ramulator/dram/commands/WRA.h"
-#include "ramulator/dram/commands/populate.h"
-#include "ramulator/dram/dram_spec.h"
 
 namespace Ramulator {
 
@@ -34,39 +35,15 @@ class DDR5_RFM : public DRAMSpec {
   };
   struct Timing {
     enum : int {
-      rate,
-      nBL,
-      nCL,
-      nRCD,
-      nRP,
-      nRAS,
-      nRC,
-      nWR,
-      nRTP,
-      nCWL,
-      nPPD,
-      nCCDS,
-      nCCDL,
-      nCCDS_WR,
-      nCCDL_WR,
-      nRRDS,
-      nRRDL,
-      nWTRS,
-      nWTRL,
-      nFAW,
-      nRFC,
-      nREFI,
-      nCS,
-      tCK_ps,
-      nRFM,
-      nRFMpb,
-      COUNT
+    rate, nBL, nCL, nRCD, nRP, nRAS, nRC, nWR, nRTP, nCWL, nPPD, nCCDS, nCCDL, nCCDS_WR, nCCDL_WR, nRRDS, nRRDL,
+    nWTRS, nWTRL, nFAW, nRFC, nREFI, nCS, tCK_ps, nRFM, nRFMpb, COUNT
     };
   };
 
-  using CommandImpls = std::tuple<Cmd::ACT<DDR5_RFM>, Cmd::PREpb<DDR5_RFM>, Cmd::PREab<DDR5_RFM>, Cmd::RD<DDR5_RFM>,
-                                  Cmd::WR<DDR5_RFM>, Cmd::RDA<DDR5_RFM>, Cmd::WRA<DDR5_RFM>, Cmd::REFab<DDR5_RFM>,
-                                  Cmd::RFMab<DDR5_RFM>, Cmd::RFMpb<DDR5_RFM> >;
+  using CommandImpls = std::tuple<
+      Cmd::ACT<DDR5_RFM>, Cmd::PREpb<DDR5_RFM>, Cmd::PREab<DDR5_RFM>, Cmd::RD<DDR5_RFM>, Cmd::WR<DDR5_RFM>,
+      Cmd::RDA<DDR5_RFM>, Cmd::WRA<DDR5_RFM>, Cmd::REFab<DDR5_RFM>, Cmd::RFMab<DDR5_RFM>, Cmd::RFMpb<DDR5_RFM>
+  >;
 
   DDR5_RFM(const ConfigNode& config) {
     // Counts
@@ -79,24 +56,25 @@ class DDR5_RFM : public DRAMSpec {
     set_names(levels, level_names, {"Channel", "Rank", "BankGroup", "Bank", "Row", "Column"});
     set_names(commands, command_names, {"ACT", "PREpb", "PREab", "RD", "WR", "RDA", "WRA", "REFab", "RFMab", "RFMpb"});
     set_names(states, state_names, {"Opened", "Closed", "N_A"});
-    set_names(timings, timing_names,
-              {"rate",  "nBL",  "nCL",   "nRCD",  "nRP",      "nRAS",     "nRC",   "nWR",   "nRTP",
-               "nCWL",  "nPPD", "nCCDS", "nCCDL", "nCCDS_WR", "nCCDL_WR", "nRRDS", "nRRDL", "nWTRS",
-               "nWTRL", "nFAW", "nRFC",  "nREFI", "nCS",      "tCK_ps",   "nRFM",  "nRFMpb"});
+    set_names(timings, timing_names, {
+        "rate", "nBL", "nCL", "nRCD", "nRP", "nRAS", "nRC", "nWR", "nRTP", "nCWL", "nPPD", "nCCDS", "nCCDL",
+        "nCCDS_WR", "nCCDL_WR", "nRRDS", "nRRDL", "nWTRS", "nWTRL", "nFAW", "nRFC", "nREFI", "nCS", "tCK_ps", "nRFM",
+        "nRFMpb"
+    });
 
     // Static spec data
     internal_prefetch_size = 16;
     init_states = {
-        State::N_A,     // Channel
-        State::N_A,     // Rank
-        State::N_A,     // BankGroup
-        State::Closed,  // Bank
-        State::Closed,  // Row
-        State::N_A,     // Column
+        State::N_A,           // Channel
+        State::N_A,           // Rank
+        State::N_A,           // BankGroup
+        State::Closed,        // Bank
+        State::Closed,        // Row
+        State::N_A,           // Column
     };
     supported_requests = {
-        Command::RD,  // Read -> RD
-        Command::WR,  // Write -> WR
+        Command::RD,        // Read -> RD
+        Command::WR,        // Write -> WR
     };
 
     // Runtime config (organization, timing values, timing constraints)

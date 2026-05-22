@@ -46,9 +46,88 @@ def _collect_issued(dut, *, command, count, max_ticks):
     raise AssertionError(f"Did not observe {count} {command} commands in {max_ticks} ticks")
 
 
-def test_gddr7_controller_rejects_non_always_on_rck_mode():
-    with pytest.raises(RuntimeError, match="always_on"):
-        _make_gddr7(rck_mode="explicit_start")
+def test_gddr7_controller_rejects_unknown_rck_mode():
+    with pytest.raises(RuntimeError, match="not supported"):
+        _make_gddr7(rck_mode="not_a_real_mode")
+
+
+@pytest.mark.parametrize("mode", ["disabled", "always_on"])
+def test_gddr7_controller_rejects_manual_rck_commands_in_inactive_modes(mode):
+    dut = _make_gddr7(rck_mode=mode)
+    rck = _all_bank_addr(dut)
+    with pytest.raises(RuntimeError, match="illegal"):
+        dut.priority_send("RCKSTRT", rck)
+    with pytest.raises(RuntimeError, match="illegal"):
+        dut.priority_send("RCKSTOP", rck)
+
+
+def test_gddr7_controller_rejects_rckstrt_in_start_with_read_mode():
+    dut = _make_gddr7(rck_mode="start_with_read")
+    with pytest.raises(RuntimeError, match="illegal"):
+        dut.priority_send("RCKSTRT", _all_bank_addr(dut))
+
+
+def test_gddr7_start_with_read_never_emits_rckstrt_and_stops_after_idle():
+    idle = 8
+    dut = _make_gddr7(rck_mode="start_with_read", rck_idle_threshold=idle)
+    dut.send_request("Read", _addr(dut, bank=0, row=0))
+    history = dut.run_until_idle(
+        max_ticks=idle + dut.timing("nRD2RCKSTOP") + dut.timing("nRCKSTOP_LAT") + 64,
+    )
+
+    cmds = [item.command for item in history]
+    assert "RCKSTRT" not in cmds
+    assert cmds.count("RCKSTOP") == 1
+
+    last_rd_clk = max(item.clk for item in history if item.command in ("RD", "RDA"))
+    rckstop_clk = next(item.clk for item in history if item.command == "RCKSTOP")
+    assert rckstop_clk - last_rd_clk >= dut.timing("nRD2RCKSTOP")
+
+
+def test_gddr7_start_with_rckstrt_emits_rckstrt_before_first_read():
+    dut = _make_gddr7(rck_mode="start_with_rckstrt", rck_idle_threshold=1_000_000)
+    dut.send_request("Read", _addr(dut, bank=0, row=0))
+    history = dut.run_until_idle(max_ticks=128)
+
+    cmds = [item.command for item in history]
+    rckstrt_idx = cmds.index("RCKSTRT")
+    first_rd_idx = cmds.index("RD")
+    assert rckstrt_idx < first_rd_idx
+
+    rckstrt_clk = history[rckstrt_idx].clk
+    first_rd_clk = history[first_rd_idx].clk
+    assert first_rd_clk - rckstrt_clk >= dut.timing("nRCKSTRT2RD")
+
+
+def test_gddr7_start_with_rckstrt_emits_one_rckstrt_for_burst_of_reads():
+    dut = _make_gddr7(rck_mode="start_with_rckstrt", rck_idle_threshold=1_000_000)
+    for col in range(0, 8):
+        dut.send_request("Read", _addr(dut, bank=0, row=0, column=col))
+    history = dut.run_until_idle(max_ticks=512)
+
+    assert [item.command for item in history].count("RCKSTRT") == 1
+
+
+def test_gddr7_start_with_rckstrt_stops_after_idle_then_restarts_for_next_read():
+    idle = 8
+    dut = _make_gddr7(rck_mode="start_with_rckstrt", rck_idle_threshold=idle)
+    dut.send_request("Read", _addr(dut, bank=0, row=0))
+    first_pass = dut.run_until_idle(
+        max_ticks=idle + dut.timing("nRD2RCKSTOP") + dut.timing("nRCKSTOP_LAT") + 64,
+    )
+
+    first_cmds = [item.command for item in first_pass]
+    assert first_cmds.count("RCKSTRT") == 1
+    assert first_cmds.count("RCKSTOP") == 1
+
+    dut.send_request("Read", _addr(dut, bank=1, row=0))
+    second_pass = dut.run_until_idle(max_ticks=256)
+    second_cmds = [item.command for item in second_pass]
+    assert second_cmds.count("RCKSTRT") == 1
+
+    last_rckstop_clk = max(item.clk for item in first_pass if item.command == "RCKSTOP")
+    next_rckstrt_clk = next(item.clk for item in second_pass if item.command == "RCKSTRT")
+    assert next_rckstrt_clk - last_rckstop_clk >= dut.timing("nRCKSP2ST")
 
 
 def test_gddr7_controller_dual_issues_row_and_column_when_both_are_ready():
@@ -121,7 +200,9 @@ def test_gddr7_manual_rfm_commands_use_device_command_plumbing():
 
 
 def test_gddr7_manual_rck_commands_follow_timing_model():
-    dut = _make_gddr7()
+    # Manual RCKSTRT/RCKSTOP injection is only legal in start/stop modes
+    # (illegal in 'disabled' and 'always_on' per JESD239D §6.9).
+    dut = _make_gddr7(rck_mode="start_with_rckstrt", rck_idle_threshold=1_000_000)
     rck = _all_bank_addr(dut)
 
     dut.priority_send("RCKSTRT", rck)

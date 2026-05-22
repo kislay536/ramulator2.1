@@ -6,6 +6,9 @@
  *
  * Regenerate:   python -m ramulator codegen LPDDR6
  ******************************************************************************/
+#include "ramulator/dram/dram_spec.h"
+
+#include "ramulator/dram/commands/populate.h"
 #include "ramulator/dram/commands/ACT1.h"
 #include "ramulator/dram/commands/ACT2.h"
 #include "ramulator/dram/commands/CAS_RD.h"
@@ -17,8 +20,6 @@
 #include "ramulator/dram/commands/REFab.h"
 #include "ramulator/dram/commands/WRA_S.h"
 #include "ramulator/dram/commands/WR_S.h"
-#include "ramulator/dram/commands/populate.h"
-#include "ramulator/dram/dram_spec.h"
 
 namespace Ramulator {
 
@@ -35,44 +36,16 @@ class LPDDR6 : public DRAMSpec {
   };
   struct Timing {
     enum : int {
-      rate,
-      nBL_min,
-      nBL_max,
-      nRL,
-      nWL,
-      nRCDr,
-      nRCDw,
-      nRP,
-      nRPab,
-      nRAS,
-      nRC,
-      nWTP,
-      nRTP,
-      nPPD,
-      nCCDS,
-      nCCDL,
-      nCCDS_WR,
-      nCCDL_WR,
-      nRRD,
-      nWTRS,
-      nWTRL,
-      nRTW_S,
-      nRTW_L,
-      nFAW,
-      nRFC,
-      nREFI,
-      nWCKPST,
-      nCAS,
-      nAAD,
-      nCS,
-      tCK_ps,
-      COUNT
+    rate, nBL_min, nBL_max, nRL, nWL, nRCDr, nRCDw, nRP, nRPab, nRAS, nRC, nWTP, nRTP, nPPD, nCCDS, nCCDL, nCCDS_WR,
+    nCCDL_WR, nRRD, nWTRS, nWTRL, nRTW_S, nRTW_L, nFAW, nRFC, nREFI, nWCKPST, nCAS, nAAD, nCS, tCK_ps, COUNT
     };
   };
 
-  using CommandImpls = std::tuple<Cmd::ACT1<LPDDR6>, Cmd::ACT2<LPDDR6>, Cmd::PREpb<LPDDR6>, Cmd::PREab<LPDDR6>,
-                                  Cmd::CAS_RD<LPDDR6>, Cmd::CAS_WR<LPDDR6>, Cmd::RD_S<LPDDR6>, Cmd::WR_S<LPDDR6>,
-                                  Cmd::RDA_S<LPDDR6>, Cmd::WRA_S<LPDDR6>, Cmd::REFab<LPDDR6> >;
+  using CommandImpls = std::tuple<
+      Cmd::ACT1<LPDDR6>, Cmd::ACT2<LPDDR6>, Cmd::PREpb<LPDDR6>, Cmd::PREab<LPDDR6>, Cmd::CAS_RD<LPDDR6>,
+      Cmd::CAS_WR<LPDDR6>, Cmd::RD_S<LPDDR6>, Cmd::WR_S<LPDDR6>, Cmd::RDA_S<LPDDR6>, Cmd::WRA_S<LPDDR6>,
+      Cmd::REFab<LPDDR6>
+  >;
 
   LPDDR6(const ConfigNode& config) {
     // Counts
@@ -83,27 +56,27 @@ class LPDDR6 : public DRAMSpec {
 
     // String name maps + reverse lookup vectors
     set_names(levels, level_names, {"Channel", "Rank", "BankGroup", "Bank", "Row", "Column"});
-    set_names(commands, command_names,
-              {"ACT1", "ACT2", "PREpb", "PREab", "CAS_RD", "CAS_WR", "RD_S", "WR_S", "RDA_S", "WRA_S", "REFab"});
+    set_names(commands, command_names, {"ACT1", "ACT2", "PREpb", "PREab", "CAS_RD", "CAS_WR", "RD_S", "WR_S", "RDA_S", "WRA_S", "REFab"});
     set_names(states, state_names, {"Opened", "Closed", "Activating", "N_A"});
-    set_names(timings, timing_names, {"rate",     "nBL_min",  "nBL_max", "nRL",   "nWL",   "nRCDr",  "nRCDw",  "nRP",
-                                      "nRPab",    "nRAS",     "nRC",     "nWTP",  "nRTP",  "nPPD",   "nCCDS",  "nCCDL",
-                                      "nCCDS_WR", "nCCDL_WR", "nRRD",    "nWTRS", "nWTRL", "nRTW_S", "nRTW_L", "nFAW",
-                                      "nRFC",     "nREFI",    "nWCKPST", "nCAS",  "nAAD",  "nCS",    "tCK_ps"});
+    set_names(timings, timing_names, {
+        "rate", "nBL_min", "nBL_max", "nRL", "nWL", "nRCDr", "nRCDw", "nRP", "nRPab", "nRAS", "nRC", "nWTP", "nRTP",
+        "nPPD", "nCCDS", "nCCDL", "nCCDS_WR", "nCCDL_WR", "nRRD", "nWTRS", "nWTRL", "nRTW_S", "nRTW_L", "nFAW",
+        "nRFC", "nREFI", "nWCKPST", "nCAS", "nAAD", "nCS", "tCK_ps"
+    });
 
     // Static spec data
     internal_prefetch_size = 16;
     init_states = {
-        State::N_A,     // Channel
-        State::N_A,     // Rank
-        State::N_A,     // BankGroup
-        State::Closed,  // Bank
-        State::Closed,  // Row
-        State::N_A,     // Column
+        State::N_A,           // Channel
+        State::N_A,           // Rank
+        State::N_A,           // BankGroup
+        State::Closed,        // Bank
+        State::Closed,        // Row
+        State::N_A,           // Column
     };
     supported_requests = {
-        Command::RD_S,  // Read -> RD_S
-        Command::WR_S,  // Write -> WR_S
+        Command::RD_S,      // Read -> RD_S
+        Command::WR_S,      // Write -> WR_S
     };
 
     // Runtime config (organization, timing values, timing constraints)
@@ -115,7 +88,7 @@ class LPDDR6 : public DRAMSpec {
 };
 
 // Self-registration
-static bool _dram_lpddr6 =
-    DRAMSpec::register_standard("LPDDR6", [](const ConfigNode& config) { return std::make_unique<LPDDR6>(config); });
+static bool _dram_lpddr6 = DRAMSpec::register_standard(
+    "LPDDR6", [](const ConfigNode& config) { return std::make_unique<LPDDR6>(config); });
 
 }  // namespace Ramulator
