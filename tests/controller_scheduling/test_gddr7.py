@@ -10,7 +10,7 @@ pytestmark = pytest.mark.controller_scheduling
 def _dram(**overrides):
     return ramulator.dram.GDDR7(
         org_preset="GDDR7_16Gb_x8_4ch",
-        timing_preset="GDDR7_TEST_28000_PAM3",
+        timing_preset="GDDR7_TEST_28000",
         **overrides,
     )
 
@@ -211,3 +211,32 @@ def test_gddr7_manual_rck_commands_follow_timing_model():
 
     assert [item.command for item in history] == ["RCKSTRT", "RCKSTOP"]
     assert history[1].clk - history[0].clk == dut.timing("nRCKST2SP")
+
+
+# ── PAM3 / NRZ encoding ────────────────────────────────────────────────────
+
+
+def test_gddr7_default_encoding_is_pam3():
+    dut = _make_gddr7()
+    assert dut.timing("nBL") == 2
+    assert dut.timing("nCCD") == 2
+
+
+def test_gddr7_explicit_pam3_encoding_yields_nbl_2():
+    dut = _make_gddr7(_dram(encoding="PAM3"))
+    assert dut.timing("nBL") == 2
+    assert dut.timing("nCCD") == 2
+
+
+def test_gddr7_nrz_encoding_yields_nbl_4_and_nccd_4():
+    dut = _make_gddr7(_dram(encoding="NRZ"))
+    assert dut.timing("nBL") == 4
+    assert dut.timing("nCCD") == 4
+    # tCCDSB is the same in both modes (same-bank constraint).
+    assert dut.timing("nCCDSB") == 4
+
+
+def test_gddr7_unknown_encoding_is_rejected():
+    # Validation runs at resolve time (to_config triggers resolve).
+    with pytest.raises(ValueError, match="encoding must be one of"):
+        _dram(encoding="PAM5").to_config()

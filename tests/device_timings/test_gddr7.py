@@ -27,7 +27,7 @@ def first_cycle_gap(preceding, following, nominal):
 def make_dut(*, channel_id=0, **overrides):
     dram = ramulator.dram.GDDR7(**{
         "org_preset": "GDDR7_16Gb_x8_4ch",
-        "timing_preset": "GDDR7_TEST_28000_PAM3",
+        "timing_preset": "GDDR7_TEST_28000",
         **overrides,
     })
     return device_timings.DeviceUnderTest(dram, channel_id=channel_id)
@@ -42,9 +42,10 @@ def all_bank_addr(dut):
 
 
 def test_gddr7_resolver_uses_direct_gddr6_guesstimates_and_preserves_sources():
-    timing = {"nBL": 2, "tCK_ps": 571, "nRL": 42, "nRFCpb": 77}
-    GDDR7.resolve_secondary_timings(timing, {})
+    timing = {"tCK_ps": 571, "nRL": 42, "nRFCpb": 77}
+    GDDR7.resolve_secondary_timings(timing, {"encoding": "PAM3"})
 
+    assert timing["nBL"] == 2
     assert timing["nRL"] == 42
     assert timing["nRFCpb"] == 77
     assert timing["nWL"] == 6
@@ -57,10 +58,41 @@ def test_gddr7_resolver_uses_direct_gddr6_guesstimates_and_preserves_sources():
     assert timing["nRCK_LS"] == 2
     assert timing["nRFMpb"] == 77
 
-    nrz_timing = {"nBL": 4, "tCK_ps": 571}
-    GDDR7.resolve_secondary_timings(nrz_timing, {})
+    nrz_timing = {"tCK_ps": 571}
+    GDDR7.resolve_secondary_timings(nrz_timing, {"encoding": "NRZ"})
+    assert nrz_timing["nBL"] == 4
     assert nrz_timing["nCCD"] == 4
     assert nrz_timing["nRRD"] == 17
+
+
+def test_gddr7_resolver_defaults_to_pam3_when_encoding_unset():
+    timing = {"tCK_ps": 571}
+    GDDR7.resolve_secondary_timings(timing, {})
+    assert timing["nBL"] == 2
+    assert timing["nCCD"] == 2
+
+
+def test_gddr7_resolver_rate_halves_in_nrz_versus_pam3():
+    pam3 = {"tCK_ps": 571}
+    nrz = {"tCK_ps": 571}
+    GDDR7.resolve_secondary_timings(pam3, {"encoding": "PAM3"})
+    GDDR7.resolve_secondary_timings(nrz, {"encoding": "NRZ"})
+    # rate = internal_prefetch_size * 1e6 / (nBL * tCK_ps); nBL doubles in NRZ.
+    # Allow ±1 for the round() in the formula.
+    assert abs(pam3["rate"] - 2 * nrz["rate"]) <= 2
+
+
+def test_gddr7_resolver_rejects_unknown_encoding():
+    with pytest.raises(ValueError, match="encoding must be one of"):
+        GDDR7.resolve_secondary_timings({"tCK_ps": 571}, {"encoding": "PAM7"})
+
+
+def test_gddr7_resolver_rejects_preset_setting_nbl_directly():
+    with pytest.raises(ValueError, match="do not set nBL"):
+        GDDR7.resolve_secondary_timings(
+            {"tCK_ps": 571, "nBL": 3},
+            {"encoding": "PAM3"},
+        )
 
 
 def test_gddr7_closed_bank_read_requires_activate():
