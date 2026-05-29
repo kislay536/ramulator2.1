@@ -251,3 +251,36 @@ def test_gddr7_manual_rck_timing():
 
     t_start = t_stop + first_cycle_gap("RCKSTOP", "RCKSTRT", dut.timings["nRCKSP2ST"])
     dut.assert_earliest_ready_at("RCKSTRT", rck, t_start)
+
+
+def test_gddr7_rd2rckstop_tracks_encoding():
+    # nRD2RCKSTOP = RL + BL/8 + DQERL + tRCKPST - RCKSTOP_LAT, and nBL == BL/8.
+    # PAM3 -> nBL=2 -> 24+2+0+2-10 = 18; NRZ -> nBL=4 -> 24+4+0+2-10 = 20.
+    pam3 = make_dut(encoding="PAM3")
+    nrz = make_dut(encoding="NRZ")
+    assert pam3.timings["nRD2RCKSTOP"] == 18
+    assert nrz.timings["nRD2RCKSTOP"] == 20
+
+    # The device enforces the larger NRZ gap after a read.
+    a = addr(nrz)
+    rck = all_bank_addr(nrz)
+    nrz.issue("ACT", a, 0)
+    t_rd = first_cycle_gap("ACT", "RD", nrz.timings["nRCDRD"])
+    nrz.issue("RD", a, t_rd)
+    t_stop = t_rd + first_cycle_gap("RD", "RCKSTOP", nrz.timings["nRD2RCKSTOP"])
+    nrz.assert_earliest_ready_at("RCKSTOP", rck, t_stop)
+
+
+@pytest.mark.parametrize(
+    "override, match",
+    [
+        ({"nRCKEN": 3}, "nRCKEN"),
+        ({"nRCKPST": 1}, "nRCKPST"),
+        ({"nRCKSTRT2RD": 1}, "nRCKSTRT2RD"),
+        ({"nRCK_LS": 1}, "nRCK_LS"),
+    ],
+)
+def test_gddr7_rejects_illegal_rck_minimums(override, match):
+    timing = {"tCK_ps": 571, **override}
+    with pytest.raises(ValueError, match=match):
+        GDDR7.resolve_secondary_timings(timing, {"encoding": "PAM3"})

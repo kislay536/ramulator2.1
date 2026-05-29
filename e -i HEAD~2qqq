@@ -1,0 +1,145 @@
+[33mcommit 2ef722aaf5cf3b5a5f9451574364f31234bdcb58[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mRCKv2.1[m[33m, [m[1;31morigin/RCKv2.1[m[33m)[m
+Author: kislay536 <kislayarya536@gmail.com>
+Date:   Sun May 24 13:49:52 2026 +0000
+
+    Implemented PAM3 and NRZ: Open to Review
+
+[33mcommit 4f32d75c6ce4eb1fde676f577d797e836cdccbc1[m
+Author: kislay536 <kislayarya536@gmail.com>
+Date:   Fri May 22 18:10:18 2026 +0000
+
+    Implemented RCM modes: Open to review
+
+[33mcommit 4754133d9aff0d4c6bb7c6744c6039cbacbb47c6[m
+Author: kislay536 <kislayarya536@gmail.com>
+Date:   Tue May 19 23:10:40 2026 +0530
+
+    Initial GDDR7
+
+[33mcommit 278f1effc3838099a6ffe0ad5f9f572fea80c948[m
+Author: Haocong Luo <haocong.luo@safari.ethz.ch>
+Date:   Thu May 14 03:37:53 2026 +0000
+
+    Added GDDR6; Improved clock edge and cmd pairing for HBM3/4; Improved AllBankRefresh scope resolution
+
+[33mcommit a21740de7b73eb1171f82f4bbebe3060cf6b4f8d[m
+Author: Haocong Luo <haocong.luo@safari.ethz.ch>
+Date:   Tue May 5 23:57:58 2026 +0000
+
+    Fix root DRAM node id: properly assign per-channel id to each root node (#116)
+    
+    GenericDRAMSystem now use set_channel_id() to properly set channel id of
+    each controller and propagates the channel id to the corresponding DRAM
+    root node.
+    
+    Also updated test harness accordingly.
+
+[33mcommit b13d547a324567c526046310eb8479c01f0b70d1[m
+Author: Haocong Luo <haocong.luo@safari.ethz.ch>
+Date:   Tue May 5 23:49:54 2026 +0000
+
+    Fix HBM1/2/3 column count (#116): scale by BL to match Ramulator's column convention
+
+[33mcommit 5e17aab054b8f918c2ee5e48e0479f97c0660a6b[m
+Author: Haocong Luo <haocong.luo@safari.ethz.ch>
+Date:   Tue May 5 23:49:13 2026 +0000
+
+    Refactor latency-throughput test suite and add controller warmup support
+    
+    Reorganize tests/latency_throughput into a utils/ subpackage so the shared
+    infrastructure (runner, sweep, plot, checks, spec) lives in one place and
+    per-DUT testcase modules become slim data-only configs:
+    
+      tests/latency_throughput/
+        utils/{runner,sweep,plot,checks,spec}.py
+        testcases/{ddr3,ddr4,ddr5,hbm,hbm2,hbm3,lpddr5}.py
+        test_fast.py, test_full.py, test_warmup_reset.py
+    
+    Add proper warmup support in ControllerBase 1) a separate m_measured_clk
+    counter (independent of m_clk) drives all rate-based stats, and 2) a
+    reset_stats() method to be called after warmup so collected stats are only
+    for post-warmup. The "cycles" stat now reports m_measured_clk.
+    The latency-throughput frontend exposes a warmup reset hook so traffic
+    generators can mark the start of the measured window.
+    
+    README updates clarify the fast vs full lat-tp flow, document the new
+    config shape (COMMON_CONFIG + per-suite request counts), and fix a few
+    typos.
+
+[33mcommit a6464558479731d33a0949bcfb3498233c079d49[m
+Author: Haocong Luo <haocong.luo@safari.ethz.ch>
+Date:   Mon Apr 20 01:52:33 2026 +0000
+
+    Add throughput stats
+
+[33mcommit 7ff037ddd4f57314ec6ebd9266518ec500d4e180[m
+Author: Haocong Luo <haocong.luo@safari.ethz.ch>
+Date:   Tue Apr 14 05:56:29 2026 +0000
+
+    Test harness reorganization
+
+[33mcommit dd6efdb60931687df616bd968c171585f5a2f008[m
+Merge: bff7fa5 5e17da7
+Author: Haocong Luo <richardluo723@gmail.com>
+Date:   Tue Apr 14 07:00:02 2026 +0200
+
+    Merge pull request #114 from YWHyuk/v2.1
+    
+    Fix row stat updating to run before issue_command (#113)
+
+[33mcommit 5e17da7310b62744ed1c1c6894ea4cd0e6c47d1d[m
+Author: Wonhyuk Yang <wonhyuk@postech.ac.kr>
+Date:   Tue Apr 14 11:23:59 2026 +0900
+
+    Fix row stat updating to run before issue_command (#113)
+
+[33mcommit bff7fa5682fb49ce216e47d6f3aaa9693afddd50[m
+Author: Haocong Luo <haocong.luo@safari.ethz.ch>
+Date:   Mon Mar 30 01:07:52 2026 +0000
+
+    1) Improved simulation speed, 2) improved channel mapping and intra-controller addr mapping, 3) reorganized tests/ to be cleaner, and 4) upgrade yaml-cpp to 0.9.0
+
+[33mcommit 3448aeba1c3e02e3977d3d567a5a7c0128ca66a1[m
+Author: Haocong Luo <haocong.luo@safari.ethz.ch>
+Date:   Thu Mar 26 13:58:05 2026 +0000
+
+    Fix gem5 FS full boot-up issue (credits: @sangjae4309, see https://github.com/CMU-SAFARI/ramulator2/pull/79)
+
+[33mcommit 9929e137fbebb1d5ddb7dc0fac29ca3b794d2840[m
+Merge: 11186ff 715e50c
+Author: Haocong Luo <richardluo723@gmail.com>
+Date:   Thu Mar 26 14:51:43 2026 +0100
+
+    Merge pull request #110 from jiegec/v2.1
+    
+    Fix missing include for std::find_if
+
+[33mcommit 715e50cedf6edadb00cace148c421c2028f70679[m
+Author: Jiajie Chen <c@jia.je>
+Date:   Thu Mar 26 13:14:06 2026 +0800
+
+    Fix missing include for std::find_if
+    
+    Fix compilation error: ‘find_if’ is not a member of ‘std’; did you mean
+    ‘find’?
+
+[33mcommit 11186ff25ea5cf907036b8ff05619a084def285e[m
+Author: Haocong Luo <haocong.luo@safari.ethz.ch>
+Date:   Thu Mar 26 04:44:13 2026 +0000
+
+    - Made channel_width configurable from DRAM org
+    - Added tx size matching check (for now, only req size <= tx size is allowed)
+    - Improved gem5 wrapper write path
+    - Make config errors fail explicitly
+
+[33mcommit 0aba1928abcc5968d5d6dbad4a25207b38f43967[m
+Author: Haocong Luo <haocong.luo@safari.ethz.ch>
+Date:   Thu Mar 26 03:08:03 2026 +0000
+
+    Improvements: 1) make channel_width configurable, 2) added tx size matching check (for now, only req size <= tx size is allowed), and 3) improved gem5 wrapper write path
+
+[33mcommit 951ae1c6ec9b53839bd9f1aa15bf9e33d60e8dd5[m
+Author: Haocong Luo <haocong.luo@safari.ethz.ch>
+Date:   Mon Mar 23 10:36:47 2026 +0000
+
+    Ramulator 2.1 Pre-Release

@@ -326,6 +326,22 @@ class GDDR7(DRAMStandard):
         timing_dict.setdefault("nRCKEN", 6)
         timing_dict.setdefault("nRCKSTOP_LAT", 10)
         timing_dict.setdefault("nRCK_LS", 2)
+
+        # JESD239D Table 88 hard minimums. These are universal JEDEC bounds (not
+        # vendor-specific), so they are modelable config-validity checks. The
+        # defaults above are legal; these only fire on an illegal user override.
+        #   tRCK_ST(min)=4 nCK4, and Note 2 requires RCKEN >= tRCK_ST(min).
+        #   tRCKPST(min)=2 nCK4. tRCKSTRT2RD(min)=2 nCK4.
+        #   RCK_LS (MR9 OP2) is either skipped (0) or 2 CK4 cycles.
+        if timing_dict["nRCKEN"] < 4:
+            raise ValueError("GDDR7: nRCKEN must be >= 4 (tRCK_ST minimum, JESD239D Table 88 Note 2)")
+        if timing_dict["nRCKPST"] < 2:
+            raise ValueError("GDDR7: nRCKPST must be >= 2 nCK4 (JESD239D Table 88)")
+        if timing_dict["nRCKSTRT2RD"] < 2:
+            raise ValueError("GDDR7: nRCKSTRT2RD must be >= 2 nCK4 (JESD239D Table 88)")
+        if timing_dict["nRCK_LS"] not in (0, 2):
+            raise ValueError("GDDR7: nRCK_LS must be 0 or 2 CK4 cycles (MR9 OP2, JESD239D §6.9)")
+
         timing_dict.setdefault(
             "nRCK_HS",
             max(0, timing_dict["nRL"] + timing_dict["nRCKSTRT2RD"] - timing_dict["nRCKEN"] - timing_dict["nRCK_LS"]),
