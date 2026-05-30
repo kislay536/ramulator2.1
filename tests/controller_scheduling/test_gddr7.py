@@ -149,6 +149,70 @@ def test_gddr7_controller_dual_issues_row_and_column_when_both_are_ready():
     assert issued[0].clk == issued[1].clk
 
 
+def _drain(dut, n):
+    for _ in range(n):
+        dut.tick()
+
+
+def test_gddr7_two_column_commands_serialize_on_column_bus():
+    # Only one column command may issue per cycle (single column-bus slot), and
+    # successive column commands respect nCCD (2-cycle command occupancy).
+    dut = _make_gddr7()
+    a0 = _addr(dut, bank=0, row=0)
+    a1 = _addr(dut, bank=1, row=0)
+
+    dut.priority_send("ACT", a0)
+    dut.priority_send("ACT", a1)
+    _drain(dut, dut.timing("nRRD") + dut.timing("nRCDRD") + 8)  # open both rows
+
+    dut.priority_send("RD", a0)
+    dut.priority_send("RD", a1)
+    rds = []
+    for _ in range(dut.timing("nCCD") + 8):
+        issued = dut.tick()
+        assert sum(1 for i in issued if i.command in ("RD", "RDA")) <= 1
+        rds += [i for i in issued if i.command == "RD"]
+        if len(rds) == 2:
+            break
+
+    assert len(rds) == 2
+    assert rds[1].clk - rds[0].clk >= dut.timing("nCCD")
+
+
+def test_gddr7_two_row_commands_serialize_on_row_bus():
+    # Only one row command may issue per cycle (single row-bus slot); two ACTs
+    # to different banks are spaced by nRRD.
+    dut = _make_gddr7()
+    dut.priority_send("ACT", _addr(dut, bank=0, row=0))
+    dut.priority_send("ACT", _addr(dut, bank=1, row=0))
+
+    acts = []
+    for _ in range(dut.timing("nRRD") + 8):
+        issued = dut.tick()
+        assert sum(1 for i in issued if i.command == "ACT") <= 1
+        acts += [i for i in issued if i.command == "ACT"]
+        if len(acts) == 2:
+            break
+
+    assert len(acts) == 2
+    assert acts[1].clk - acts[0].clk >= dut.timing("nRRD")
+
+
+def test_gddr7_rckstrt_and_read_do_not_co_issue_on_column_bus():
+    # RCKSTRT/RCKSTOP are column commands, so they share the single column-bus
+    # slot with RD/RDA and can never co-issue with a read in the same cycle.
+    dut = _make_gddr7(rck_mode="start_with_rckstrt", rck_idle_threshold=1_000_000)
+    dut.send_request("Read", _addr(dut, bank=0, row=0))
+    history = dut.run_until_idle(max_ticks=128)
+
+    by_clk = {}
+    for item in history:
+        by_clk.setdefault(item.clk, []).append(item.command)
+    for clk, cmds in by_clk.items():
+        cols = [c for c in cmds if c in ("RD", "RDA", "RCKSTRT", "RCKSTOP")]
+        assert len(cols) <= 1, f"two column commands issued at clk {clk}: {cols}"
+
+
 def test_gddr7_all_bank_refresh_has_channel_scope_and_priority_over_rw():
     dut = _make_gddr7(
         _dram(nREFI=1),
