@@ -7,7 +7,10 @@
 # Regenerate:   python -m ramulator codegen
 ###############################################################################
 from ramulator.components import Component
+from ramulator.param import Param
 
 
 class PerBank(Component):
     impl = "PerBank"
+    postponable = Param(bool, default=False)
+    max_postponed = Param(int, default=8)

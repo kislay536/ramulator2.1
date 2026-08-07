@@ -149,3 +149,93 @@ def test_all_bank_refresh_uses_channel_scope_for_hbm1():
 
     assert ref.addr_vec[_level_index(dut, "Channel")] == 0
     _assert_wildcard_levels(dut, ref, ["BankGroup", "Bank", "Row", "Column"])
+
+
+def _bank0_addr(dut, row):
+    return dut.addr_vec(Rank=0, BankGroup=0, Bank=0, Row=row, Column=0)
+
+
+def test_all_bank_refresh_postponable_defers_during_traffic_and_fires_when_idle():
+    # nREFI is large enough that the credit boundary is never crossed while
+    # the two reads below are in flight, so any REFab observed can only be
+    # the initial banked credit firing opportunistically once idle.
+    dram = ramulator.dram.DDR4(
+        org_preset="DDR4_8Gb_x8",
+        timing_preset="DDR4_2400R",
+        rank=1,
+        nREFI=200,
+    )
+    dut = cs.ControllerUnderTest.make_generic_ddr(
+        dram,
+        refresh_manager=ramulator.refresh_manager.AllBank(postponable=True, max_postponed=3),
+    )
+
+    # Row-conflicting reads to the same bank keep the controller busy
+    # (has_pending_requests() true) until the second one retires.
+    dut.send_request("Read", _bank0_addr(dut, 0))
+    dut.send_request("Read", _bank0_addr(dut, 1))
+
+    history = []
+    for _ in range(150):
+        history += dut.tick()
+
+    last_rd_clk = max(item.clk for item in history if item.command == "RD")
+    refs = [item for item in history if item.command == "REFab"]
+
+    assert len(refs) == 1
+    assert refs[0].clk > last_rd_clk
+
+
+def test_all_bank_refresh_postponable_forces_fire_at_max_postponed_cap():
+    # A deep backlog of row-conflicting reads to the same bank keeps the
+    # controller permanently busy (has_pending_requests() stays true), and
+    # once the first postponed REFab is enqueued it also blocks further read
+    # scheduling (the priority buffer must be empty for pick_rw_if to run),
+    # so the exact clock a queued REFab is *issued* is subject to real
+    # queueing/timing contention, not just the credit math. What must still
+    # hold is the JEDEC bound this feature exists to guarantee: refresh
+    # cannot be forced out before max_postponed extra intervals have
+    # elapsed, and it cannot fall behind by more than that bound either.
+    nrefi = 20
+    max_postponed = 3
+    total_ticks = 140
+    dram = ramulator.dram.DDR4(
+        org_preset="DDR4_8Gb_x8",
+        timing_preset="DDR4_2400R",
+        rank=1,
+        nREFI=nrefi,
+    )
+    dut = cs.ControllerUnderTest.make_generic_ddr(
+        dram,
+        refresh_manager=ramulator.refresh_manager.AllBank(postponable=True, max_postponed=max_postponed),
+    )
+
+    for row in range(20):
+        dut.send_request("Read", _bank0_addr(dut, row))
+
+    history = []
+    for _ in range(total_ticks):
+        history += dut.tick()
+
+    refs = [item for item in history if item.command == "REFab"]
+
+    # The manager starts with 1 banked credit and earns 1 more per nREFI, so
+    # it cannot be forced to fire before max_postponed additional intervals
+    # have elapsed.
+    earliest_possible_force = max_postponed * nrefi
+    assert all(item.clk >= earliest_possible_force for item in refs)
+
+    # Bounded staleness: by `total_ticks`, refresh cannot have fallen behind
+    # by more than max_postponed periods' worth.
+    min_expected = total_ticks // nrefi - max_postponed
+    assert len(refs) >= min_expected
+
+
+def test_all_bank_refresh_rejects_postponable_combined_with_scatter_interval():
+    dram = ramulator.dram.DDR4(org_preset="DDR4_8Gb_x8", timing_preset="DDR4_2400R", rank=1, nREFI=20)
+
+    with pytest.raises(RuntimeError, match="mutually exclusive"):
+        cs.ControllerUnderTest.make_generic_ddr(
+            dram,
+            refresh_manager=ramulator.refresh_manager.AllBank(postponable=True, scatter_interval=2),
+        )

@@ -40,6 +40,11 @@ class ControllerBase : public IController, public Implementation {
   bool send(Request& req) override;
   bool priority_send(Request& req) override;
 
+  // True if any request/command buffer is non-empty — used by refresh
+  // managers to decide whether now is an opportunistic moment to issue a
+  // postponable refresh without delaying other traffic.
+  bool has_pending_requests() const;
+
   void update_stats() override;
   void finalize() override;
   void reset_stats() override;

@@ -203,6 +203,11 @@ bool ControllerBase::priority_send(Request& req) {
   return is_success;
 }
 
+bool ControllerBase::has_pending_requests() const {
+  return m_active_buffer.size() > 0 || m_read_buffer.size() > 0 ||
+         m_write_buffer.size() > 0 || m_priority_buffer.size() > 0;
+}
+
 // ── Tick preamble ───────────────────────────────────────────────────────
 
 void ControllerBase::tick_prologue() {

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <iostream>
 #include <stdexcept>
@@ -41,6 +42,18 @@ constexpr std::array<std::pair<std::string_view, std::string_view>, 11> all_bank
 //   scatter_interval > 0:
 //      issue refreshes to different refresh-scope nodes at staggered offsets
 //      Each node is still refreshed once per nREFI period
+//
+// Postponable behavior:
+//   postponable == true (mutually exclusive with scatter_interval):
+//      models the JEDEC refresh-postponement credit budget (e.g. GDDR7
+//      JESD239D 6.12.1: up to `max_postponed` REFab commands may be
+//      postponed, capping the interval between refreshes at
+//      (max_postponed + 1) * nREFI). A credit is earned every nREFI cycles
+//      (capped at max_postponed + 1) and consumed by issuing one round of
+//      REFab (to every refresh-scope node). A banked credit is spent as
+//      soon as the controller has no other pending traffic (opportunistic),
+//      or unconditionally once credits saturate at the cap (forced), so
+//      refresh never falls further behind than the JEDEC-specified bound.
 
 std::string all_bank_refresh_scope_for(const DRAMSpec& spec) {
   for (const auto& [standard, scope] : all_bank_refresh_scopes) {
@@ -69,6 +82,12 @@ class AllBankRefresh : public IRefreshManager, public Implementation {
   int m_scatter_interval = 0;
   bool m_scatter_enabled = false;
 
+  // optional: postponable/credit-based refresh (mutually exclusive with scatter)
+  bool m_postponable = false;
+  int m_max_postponed = 8;
+  int m_credits = 0;
+  Clk_t m_next_credit_clk = -1;
+
   bool m_debug = false;
 
   std::vector<DRAMNode*> m_ref_nodes;
@@ -80,6 +99,7 @@ class AllBankRefresh : public IRefreshManager, public Implementation {
 
   void tick_all_at_once();
   void tick_scattered();
+  void tick_postponable();
   void send_refresh(DRAMNode* ref_node);
 };
 
@@ -94,6 +114,8 @@ AddrVec_t AllBankRefresh::build_addr_vec(DRAMNode* node) {
 void AllBankRefresh::init() {
   m_ctrl = cast_parent<ControllerBase>();
   RAMULATOR_PARSE_PARAM(m_scatter_interval, int, "scatter_interval").default_val(0);
+  RAMULATOR_PARSE_PARAM(m_postponable, bool, "postponable").default_val(false);
+  RAMULATOR_PARSE_PARAM(m_max_postponed, int, "max_postponed").default_val(8);
   RAMULATOR_PARSE_PARAM(m_debug, bool, "debug").default_val(false);
   const auto& info = *m_ctrl->m_device.m_spec;
 
@@ -111,6 +133,29 @@ void AllBankRefresh::init() {
   }
 
   m_scatter_enabled = m_scatter_interval > 0;
+  if (m_postponable && m_scatter_enabled) {
+    throw std::runtime_error("AllBank refresh: postponable and scatter_interval are mutually exclusive");
+  }
+  if (m_postponable && m_max_postponed < 0) {
+    throw std::runtime_error("AllBank refresh: max_postponed must be non-negative");
+  }
+
+  if (m_postponable) {
+    // One refresh round is already due at the first nREFI boundary, matching
+    // the "old" behaviour's starting point.
+    m_credits = 1;
+    m_next_credit_clk = m_nrefi;
+    if (m_debug) {
+      std::cout << "[AllBank:init] scope=" << m_scope
+                << " nREFI=" << m_nrefi
+                << " ref_nodes=" << m_ref_nodes.size()
+                << " postponable=enabled"
+                << " max_postponed=" << m_max_postponed
+                << std::endl;
+    }
+    return;
+  }
+
   if (!m_scatter_enabled) { // "old" refresh behaviour
     m_next_refresh_cycle = m_nrefi;
     if (m_debug) {
@@ -150,7 +195,9 @@ void AllBankRefresh::init() {
 }
 
 void AllBankRefresh::tick() {
-  if (m_scatter_enabled) {
+  if (m_postponable) {
+    tick_postponable();
+  } else if (m_scatter_enabled) {
     tick_scattered();
   } else {
     tick_all_at_once();
@@ -191,6 +238,35 @@ void AllBankRefresh::tick_scattered() {
     m_next_scattered_refresh_cycles[i] += m_nrefi;
     send_refresh(m_ref_nodes[i]);
   }
+}
+
+void AllBankRefresh::tick_postponable() {
+  if (m_ctrl->m_clk == m_next_credit_clk) {
+    m_credits = std::min(m_credits + 1, m_max_postponed + 1);
+    m_next_credit_clk += m_nrefi;
+  }
+  if (m_credits <= 0) {
+    return;
+  }
+
+  // Forced: credits have saturated at the JEDEC-mandated cap, so this round
+  // must be issued regardless of traffic. Opportunistic: nothing else is
+  // pending, so spending a banked credit now is free.
+  bool forced = m_credits > m_max_postponed;
+  bool opportunistic = !m_ctrl->has_pending_requests();
+  if (m_debug) {
+    std::cout << "[AllBank:postponable] clk=" << m_ctrl->m_clk << " credits=" << m_credits
+              << " forced=" << forced << " opportunistic=" << opportunistic
+              << " has_pending=" << m_ctrl->has_pending_requests() << std::endl;
+  }
+  if (!forced && !opportunistic) {
+    return;
+  }
+
+  for (auto* ref_node : m_ref_nodes) {
+    send_refresh(ref_node);
+  }
+  m_credits--;
 }
 
 }  // namespace Ramulator

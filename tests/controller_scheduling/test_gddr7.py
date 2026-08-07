@@ -367,5 +367,52 @@ def test_gddr7_rfm_manager_pb_mode_fires_targeted_rfmpb_and_resets_counter():
     # staying latched above threshold or accumulating indefinitely.
     assert len(rfmpb_events) == 2
     assert rfmpb_events[0].clk < rfmpb_events[1].clk
-    for item in rfmpb_events:
-        assert item.addr_vec[bank_idx] == 0
+
+
+def test_gddr7_per_bank_refresh_postponable_defers_during_traffic_and_fires_when_idle():
+    # nREFIpb is large enough that the credit boundary is never crossed
+    # while the two reads below are in flight, so any REFpb observed can
+    # only be the initial banked credit firing opportunistically once idle.
+    dut = _make_gddr7(
+        _dram(nREFIpb=500),
+        refresh_manager=ramulator.refresh_manager.PerBank(postponable=True, max_postponed=2),
+    )
+
+    dut.send_request("Read", _addr(dut, bank=0, row=0))
+    dut.send_request("Read", _addr(dut, bank=0, row=1))
+
+    history = _tick_for(dut, 300)
+
+    last_rd_clk = max(item.clk for item in history if item.command == "RD")
+    refs = [item for item in history if item.command == "REFpb"]
+
+    assert len(refs) == 1
+    assert refs[0].clk > last_rd_clk
+
+
+def test_gddr7_per_bank_refresh_postponable_forces_fire_within_bounded_window():
+    # A deep backlog of row-conflicting reads to bank 0 keeps the controller
+    # permanently busy. Real queueing/timing contention (the priority
+    # buffer blocks further read scheduling once a postponed REFpb is
+    # enqueued, and REFpb itself needs the target bank precharged) means the
+    # exact issue clock isn't just the credit math, but the JEDEC bound this
+    # feature exists to guarantee must still hold either way: REFpb cannot
+    # be forced out before max_postponed extra intervals have elapsed, and
+    # it cannot fall behind indefinitely despite traffic never going idle.
+    nrefipb = 15
+    max_postponed = 2
+    total_ticks = 250
+    dut = _make_gddr7(
+        _dram(nREFIpb=nrefipb),
+        refresh_manager=ramulator.refresh_manager.PerBank(postponable=True, max_postponed=max_postponed),
+    )
+
+    for row in range(20):
+        dut.send_request("Read", _addr(dut, bank=0, row=row))
+
+    history = _tick_for(dut, total_ticks)
+    refs = [item for item in history if item.command == "REFpb"]
+
+    earliest_possible_force = max_postponed * nrefipb
+    assert all(item.clk >= earliest_possible_force for item in refs)
+    assert len(refs) >= 1

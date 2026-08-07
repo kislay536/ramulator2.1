@@ -13,4 +13,6 @@ from ramulator.param import Param
 class AllBank(Component):
     impl = "AllBank"
     scatter_interval = Param(int, default=0)
+    postponable = Param(bool, default=False)
+    max_postponed = Param(int, default=8)
     debug = Param(bool, default=False)
