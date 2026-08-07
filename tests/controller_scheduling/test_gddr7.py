@@ -301,3 +301,71 @@ def test_gddr7_start_with_rckstrt_manual_rck_commands_follow_timing_model():
 
     assert [item.command for item in history] == ["RCKSTRT", "RCKSTOP"]
     assert history[1].clk - history[0].clk == dut.timing("nRCKST2SP")
+
+
+def _bank_level_index(dut):
+    return _level_index(dut, "Bank")
+
+
+def _channel_level_index(dut):
+    return _level_index(dut, "Channel")
+
+
+def _tick_for(dut, num_ticks):
+    history = []
+    for _ in range(num_ticks):
+        history += dut.tick()
+    return history
+
+
+def test_gddr7_rfm_manager_ab_mode_fires_channel_scoped_rfmab():
+    # Regression test for the bug where RFMManager::setup() unconditionally
+    # called spec->get_level_id("Rank"), which threw for GDDR7 (no Rank
+    # level) and made RFMManager unusable as a GDDR7 refresh model.
+    #
+    # RFMab is injected via priority_send as a maintenance command, which
+    # dut.run_until_idle()'s is_idle() check does not track, so this test
+    # ticks the controller directly (like the AllBank/PerBank refresh tests)
+    # instead of relying on run_until_idle.
+    threshold = 3
+    dut = _make_gddr7(
+        controller_plugins=[
+            ramulator.controller_plugin.RFMManager(rfm_thresh=threshold, rfm_mode="ab"),
+        ],
+    )
+
+    for row in range(threshold):
+        dut.send_request("Read", _addr(dut, bank=0, row=row))
+    history = _tick_for(dut, 600)
+
+    commands = [item.command for item in history]
+    assert commands.count("ACT") == threshold
+    assert "RFMab" in commands
+
+    rfm = next(item for item in history if item.command == "RFMab")
+    assert rfm.addr_vec[_bank_level_index(dut)] == dut.ALL
+    assert rfm.addr_vec[_channel_level_index(dut)] == 0
+
+
+def test_gddr7_rfm_manager_pb_mode_fires_targeted_rfmpb_and_resets_counter():
+    threshold = 3
+    dut = _make_gddr7(
+        controller_plugins=[
+            ramulator.controller_plugin.RFMManager(rfm_thresh=threshold, rfm_mode="pb"),
+        ],
+    )
+    bank_idx = _bank_level_index(dut)
+
+    for row in range(2 * threshold):
+        dut.send_request("Read", _addr(dut, bank=0, row=row))
+    history = _tick_for(dut, 1200)
+
+    rfmpb_events = [item for item in history if item.command == "RFMpb"]
+
+    # Threshold crossed twice (once per `threshold` ACTs), proving the
+    # per-bank counter is reset to zero after each RFMpb fires rather than
+    # staying latched above threshold or accumulating indefinitely.
+    assert len(rfmpb_events) == 2
+    assert rfmpb_events[0].clk < rfmpb_events[1].clk
+    for item in rfmpb_events:
+        assert item.addr_vec[bank_idx] == 0
